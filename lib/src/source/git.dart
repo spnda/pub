@@ -48,6 +48,7 @@ class GitSource extends Source {
     dynamic url;
     dynamic ref;
     dynamic path;
+    dynamic recurseSubmodules;
     if (description is String) {
       url = description;
     } else if (description is! Map) {
@@ -63,11 +64,14 @@ class GitSource extends Source {
       }
 
       path = description['path'];
+
+      recurseSubmodules = description['recurse-submodules'];
     }
     return PackageRef(name, this, {
       ..._validatedUrl(url, containingPath),
       'ref': ref ?? 'HEAD',
       'path': _validatedPath(path),
+      'recurseSubmodules': recurseSubmodules ?? false,
     });
   }
 
@@ -344,7 +348,7 @@ class BoundGitSource extends CachedSource {
       var revisionCachePath = _revisionCachePath(id);
       await _revisionCacheClones.putIfAbsent(revisionCachePath, () async {
         if (!entryExists(revisionCachePath)) {
-          await _clone(_repoCachePath(ref), revisionCachePath);
+          await _clone(_repoCachePath(ref), revisionCachePath, recurseSubmodules: id.description['recurseSubmodules']);
           await _checkOut(revisionCachePath, id.description['resolved-ref']);
           _writePackageList(revisionCachePath, [id.description['path']]);
         } else {
@@ -482,7 +486,7 @@ class BoundGitSource extends CachedSource {
     var path = _repoCachePath(ref);
     assert(!_updatedRepos.contains(path));
     try {
-      await _clone(ref.description['url'], path, mirror: true);
+      await _clone(ref.description['url'], path, mirror: true, recurseSubmodules: ref.description['recurseSubmodules']);
     } catch (_) {
       await _deleteGitRepoIfInvalid(path);
       rethrow;
@@ -583,6 +587,7 @@ class BoundGitSource extends CachedSource {
     String to, {
     bool mirror = false,
     bool shallow = false,
+    bool recurseSubmodules = false,
   }) {
     return Future.sync(() {
       // Git on Windows does not seem to automatically create the destination
@@ -592,6 +597,7 @@ class BoundGitSource extends CachedSource {
         'clone',
         if (mirror) '--mirror',
         if (shallow) ...['--depth', '1'],
+        if (recurseSubmodules != null && recurseSubmodules) '--recurse-submodules',
         from,
         to
       ];
